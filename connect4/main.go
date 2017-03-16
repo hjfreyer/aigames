@@ -1,7 +1,8 @@
 package main
 
 import (
-	"bufio" // read from engine
+	// read from engine
+
 	"fmt"
 	"log"
 	"math"
@@ -9,7 +10,8 @@ import (
 	"os"          // read from engine
 	_ "strconv"   // convert string to int
 	_ "strings"   // split and replace function for strings
-	_ "time"      // for rand.seed(stuff)
+	"sync"
+	_ "time" // for rand.seed(stuff)
 )
 
 var spaceToQuads [][]int
@@ -17,64 +19,6 @@ var spaceToQuads [][]int
 var (
 	Inf = math.Inf(1)
 )
-
-type botIdSet struct {
-	BotId byte
-}
-
-type updateField struct {
-	NewField []byte
-}
-
-type updateRound struct {
-	RoundID string
-}
-
-type moveRequest struct{}
-
-type endOfFile struct{}
-
-func readMessage(r *bufio.Scanner) interface{} {
-	if ok := r.Scan(); !ok {
-		return &endOfFile{}
-	}
-
-	group := r.Text()
-	switch group {
-	case "settings":
-		r.Scan()
-		switch r.Text() {
-		case "your_botid":
-			r.Scan()
-			return &botIdSet{r.Text()[0]}
-		default:
-			r.Scan()
-			return nil
-		}
-	case "update":
-		r.Scan()
-		if r.Text() != "game" {
-			log.Fatal("wha?")
-		}
-		r.Scan()
-		attr := r.Text()
-		r.Scan()
-		value := r.Text()
-		switch attr {
-		case "field":
-			return &updateField{NewField: parseField(value)}
-		case "round":
-			return &updateRound{RoundID: value}
-		default:
-			log.Fatal("Unknown attribute: ", attr)
-		}
-	case "action":
-		r.Scan()
-		r.Scan()
-		return &moveRequest{}
-	}
-	return nil
-}
 
 func buildReference() [][]int {
 	res := make([][]int, 42)
@@ -221,22 +165,18 @@ func evalNode(g *gameState) float64 {
 		}
 	}
 
+	// Draw.
 	if p1total == 0 && p2total == 0 && empty == 0 {
 		return 0
 	}
-	if p1total == 0 && empty == 0 {
-		return 1000
-	}
-	if p2total == 0 && empty == 0 {
-		return -1000
-	}
-
+	var p1score, p2score int
 	for i := 3; 0 < i; i-- {
-		if p1counts[i] != p2counts[i] {
-			return float64(i * (p2counts[i] - p1counts[i]))
-		}
+		p1score *= 10
+		p2score *= 10
+		p1score += p1counts[i]
+		p2score += p2counts[i]
 	}
-	return 0
+	return float64(p2score - p1score)
 }
 
 func opponent(p byte) byte {
@@ -349,37 +289,60 @@ func minimax(g *gameState, depth int, alpha, beta float64) (int, float64) {
 
 func main() {
 	spaceToQuads = buildReference()
-	scan := bufio.NewScanner(os.Stdin)
-	scan.Split(bufio.ScanWords)
 
-	for i := 0; i < 4; i++ {
-		readMessage(scan)
-	}
+	msgs := make(chan interface{}, 10)
 
-	id := readMessage(scan).(*botIdSet).BotId
-
-	for i := 0; i < 2; i++ {
-		readMessage(scan)
-	}
-	for {
-		msg := readMessage(scan)
-		if _, ok := msg.(*endOfFile); ok {
-			return
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		if err := ParseAll(os.Stdin, NewConnect4Parser(), msgs); err != nil {
+			log.Fatal(err)
 		}
-		if ur, ok := msg.(*updateRound); ok {
-			log.Print("Round: ", ur.RoundID)
-			msg = readMessage(scan)
+		wg.Done()
+	}()
+
+	var id, round string
+	var field []byte
+	for msg := range msgs {
+		switch m := msg.(type) {
+		case *SettingsChange:
+			if m.Attr == "your_botid" {
+				id = m.Val
+			}
+
+		case *RoundUpdate:
+			round = m.RoundID
+
+		case *FieldUpdate:
+			field = m.NewField
+
+		case *MoveRequest:
+			game := NewGame(field, id[0])
+			c, v := minimax(game, 9, -Inf, Inf)
+			log.Printf("Round: %s, Value: %v", round, v)
+			fmt.Printf("place_disc %d\n", c)
 		}
-
-		field := msg.(*updateField).NewField
-		game := NewGame(field, id)
-		c, v := minimax(game, 9, -Inf, Inf)
-		log.Print("Value: ", v)
-
-		_ = readMessage(scan).(*moveRequest)
-		fmt.Printf("place_disc %d\n", c)
-		readMessage(scan) // New field
 	}
+
+	wg.Wait()
+	return
+	// 	if _, ok := msg.(*endOfFile); ok {
+	// 		return
+	// 	}
+	// 	if ur, ok := msg.(*updateRound); ok {
+	//
+	// 		msg = readMessage(scan)
+	// 	}
+	//
+	// 	field := msg.(*updateField).NewField
+	// 	game := NewGame(field, id)
+	// 	c, v := minimax(game, 9, -Inf, Inf)
+	// 	log.Print("Value: ", v)
+	//
+	// 	_ = readMessage(scan).(*moveRequest)
+	//
+	// 	readMessage(scan) // New field
+	// }
 }
 
 /*
