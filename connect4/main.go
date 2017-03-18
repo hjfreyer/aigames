@@ -3,12 +3,14 @@ package main
 import (
 	// read from engine
 
+	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"math"
 	_ "math/rand" // play randomly
 	"os"          // read from engine
-	_ "strconv"   // convert string to int
+	"strconv"     // convert string to int
 	_ "strings"   // split and replace function for strings
 	"sync"
 	"time" // for rand.seed(stuff)
@@ -22,6 +24,82 @@ const (
 	bufferTime  = time.Millisecond * 50
 	timePerMove = time.Millisecond * 500
 )
+
+// Specific stuff.
+
+type SettingsChange struct {
+	Attr string
+	Val  string
+}
+
+func parseSettingsChange(s *bufio.Scanner) (interface{}, error) {
+	var res SettingsChange
+	if !s.Scan() {
+		return nil, errors.New("No attribute found")
+	}
+	res.Attr = s.Text()
+	if !s.Scan() {
+		return nil, errors.New("No value found")
+	}
+	res.Val = s.Text()
+	return &res, nil
+}
+
+type RoundUpdate struct {
+	Round int
+}
+
+func parseRoundUpdate(s *bufio.Scanner) (interface{}, error) {
+	if !s.Scan() {
+		return nil, UnexpectedEnd
+	}
+	r, err := strconv.Atoi(s.Text())
+	if err != nil {
+		return nil, err
+	}
+	return &RoundUpdate{Round: r}, nil
+}
+
+type FieldUpdate struct {
+	NewField []byte
+}
+
+func parseFieldUpdate(s *bufio.Scanner) (interface{}, error) {
+	if !s.Scan() {
+		return nil, UnexpectedEnd
+	}
+	return &FieldUpdate{NewField: parseField(s.Text())}, nil
+}
+
+type MoveRequest struct {
+	TimeBank time.Duration
+}
+
+func parseMoveRequest(s *bufio.Scanner) (interface{}, error) {
+	if !s.Scan() {
+		return nil, UnexpectedEnd
+	}
+	n, err := strconv.Atoi(s.Text())
+	if err != nil {
+		return nil, err
+	}
+	return &MoveRequest{TimeBank: time.Millisecond * time.Duration(n)}, nil
+}
+
+func NewConnect4Parser() MessageParser {
+	return CommandGroupParser{
+		"settings": ParserFunc(parseSettingsChange),
+		"update": CommandGroupParser{
+			"game": CommandGroupParser{
+				"round": ParserFunc(parseRoundUpdate),
+				"field": ParserFunc(parseFieldUpdate),
+			},
+		},
+		"action": CommandGroupParser{
+			"move": ParserFunc(parseMoveRequest),
+		},
+	}
+}
 
 type gameState struct {
 	Field        []byte
