@@ -75,14 +75,18 @@ func parseSettingsChange(s *bufio.Scanner) (interface{}, error) {
 }
 
 type RoundUpdate struct {
-	RoundID string
+	Round int
 }
 
 func parseRoundUpdate(s *bufio.Scanner) (interface{}, error) {
 	if !s.Scan() {
 		return nil, UnexpectedEnd
 	}
-	return &RoundUpdate{RoundID: s.Text()}, nil
+	r, err := strconv.Atoi(s.Text())
+	if err != nil {
+		return nil, err
+	}
+	return &RoundUpdate{Round: r}, nil
 }
 
 type FieldUpdate struct {
