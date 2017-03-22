@@ -128,8 +128,10 @@ func main() {
 			if m.Attr == "your_botid" {
 				if m.Val == "1" {
 					searcher.Player = Player1
+					log.Print("Player: 1. -Inf is our goal.")
 				} else {
 					searcher.Player = Player2
+					log.Print("Player: 2. +Inf is our goal.")
 				}
 			}
 
