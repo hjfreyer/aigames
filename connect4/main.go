@@ -94,7 +94,11 @@ func NewConnect4Parser() MessageParser {
 
 func getDeadline(timeBank time.Duration, roundNum, maxRounds int) time.Duration {
 	bonusTime := timeBank - timePerMove
-	res := timePerMove + (bonusTime / time.Duration(maxRounds-roundNum))
+	bonusTime /= time.Duration(maxRounds - roundNum)
+	if roundNum < 15 {
+		bonusTime *= 3
+	}
+	res := timePerMove + bonusTime
 	if timeBank-bufferTime < res {
 		res = timeBank - bufferTime
 	}
@@ -145,9 +149,7 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Printf("Took %v more than the deadline", time.Now().Sub(dl))
 			log.Printf("Value: %v", score.Diff())
-			log.Printf("END OF ROUND %d", round)
 			fmt.Printf("place_disc %d\n", move.(Connect4Move).Column)
 		}
 	}
