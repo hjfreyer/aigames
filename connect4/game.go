@@ -153,23 +153,12 @@ func (g *Connect4Game) Move(m Move) Patch {
 		panic("bad move")
 	}
 	g.delta(pos, g.ToMove, 1)
-	g.ToMove = opponent(g.ToMove)
+	g.ToMove = Opponent(g.ToMove)
 	return Connect4Patch{pos}
 }
 
 func (g *Connect4Game) Reverse(p Patch) {
 	pos := p.(Connect4Patch).position
-	g.ToMove = opponent(g.ToMove)
+	g.ToMove = Opponent(g.ToMove)
 	g.delta(pos, g.ToMove, -1)
-}
-
-func opponent(p Player) Player {
-	switch p {
-	case Player1:
-		return Player2
-	case Player2:
-		return Player1
-	default:
-		panic("Bad player")
-	}
 }

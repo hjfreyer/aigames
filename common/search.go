@@ -14,6 +14,17 @@ const (
 	Player2 Player = 2
 )
 
+func Opponent(p Player) Player {
+	switch p {
+	case Player1:
+		return Player2
+	case Player2:
+		return Player1
+	default:
+		panic("Bad player")
+	}
+}
+
 var (
 	ErrDeadlineExceeded = errors.New("Deadline Exceeded")
 )
@@ -26,6 +37,20 @@ type Score struct {
 
 func (s Score) Diff() float64 {
 	return s.Player2 - s.Player1
+}
+
+func (s Score) IsWinForPlayer(p Player) bool {
+	if !s.GameOver {
+		return false
+	}
+	switch p {
+	case Player1:
+		return math.IsInf(s.Player1, 1)
+	case Player2:
+		return math.IsInf(s.Player2, 1)
+	default:
+		panic("bad player")
+	}
 }
 
 type Move interface{}
@@ -76,8 +101,12 @@ func (e *Searcher) NextMove(deadline time.Time) (Move, Score, error) {
 			return nil, Score{}, err
 		}
 
-		bestMove = move
-		bestScore = score
+		// If the opponent won, fall back to the previous depth's best score in the
+		// hopes that they blunder.
+		if !score.IsWinForPlayer(Opponent(e.Player)) {
+			bestMove = move
+			bestScore = score
+		}
 
 		if score.GameOver {
 			break
