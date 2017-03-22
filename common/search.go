@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"math"
 	"time"
@@ -104,10 +103,11 @@ func (e *Searcher) NextMove(deadline time.Time) (Move, Score, error) {
 
 		// If the opponent won, fall back to the previous depth's best score in the
 		// hopes that they blunder.
-		if !score.IsWinForPlayer(Opponent(e.Player)) {
+		if score.IsWinForPlayer(Opponent(e.Player)) {
+			log.Print("Loss seems inevitable. Falling back to shorter lookaheads.")
+		} else {
 			bestMove = move
 			bestScore = score
-			fmt.Println("Loss seems inevitable. Falling back to shorter lookaheads.")
 		}
 
 		if score.GameOver {
@@ -150,23 +150,21 @@ func (s *Searcher) minimax(depth int, alpha, beta float64, t *ApproximateTimer) 
 	switch s.G.CurrentPlayer() {
 	case Player2:
 		var bestMove Move
-		var bestScore Score
-		bestDiff := math.Inf(-1)
+		bestScore := Score{GameOver: true, Player1: math.Inf(1), Player2: 0}
 
 		for _, move := range s.G.ValidMoves() {
 			p := s.G.Move(move)
 			_, score, err := s.minimax(depth-1, alpha, beta, t)
+			s.G.Reverse(p)
 			if err != nil {
 				return nil, Score{}, err
 			}
-			s.G.Reverse(p)
-			if bestDiff < score.Diff() {
+			if bestScore.Diff() < score.Diff() {
 				bestMove = move
 				bestScore = score
-				bestDiff = score.Diff()
 			}
-			if alpha < bestDiff {
-				alpha = bestDiff
+			if alpha < bestScore.Diff() {
+				alpha = bestScore.Diff()
 			}
 			if beta <= alpha {
 				break
@@ -175,28 +173,27 @@ func (s *Searcher) minimax(depth int, alpha, beta float64, t *ApproximateTimer) 
 		return bestMove, bestScore, nil
 	case Player1:
 		var bestMove Move
-		var bestScore Score
-		bestDiff := math.Inf(1)
+		bestScore := Score{GameOver: true, Player1: 0, Player2: math.Inf(1)}
 
 		for _, move := range s.G.ValidMoves() {
 			p := s.G.Move(move)
 			_, score, err := s.minimax(depth-1, alpha, beta, t)
+			s.G.Reverse(p)
 			if err != nil {
 				return nil, Score{}, err
 			}
-			s.G.Reverse(p)
-			if score.Diff() < bestDiff {
+			if score.Diff() < bestScore.Diff() {
 				bestMove = move
 				bestScore = score
-				bestDiff = score.Diff()
 			}
-			if bestDiff < beta {
-				beta = bestDiff
+			if bestScore.Diff() < beta {
+				beta = bestScore.Diff()
 			}
 			if beta <= alpha {
 				break
 			}
 		}
+
 		return bestMove, bestScore, nil
 
 	default:
