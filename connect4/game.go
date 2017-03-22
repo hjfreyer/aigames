@@ -2,7 +2,7 @@ package main
 
 import (
 	"log"
-	"time"
+	"math"
 )
 
 var spaceToQuads [][]int
@@ -53,53 +53,123 @@ func init() {
 	spaceToQuads = res
 }
 
-type GameEnv struct {
-	PlayerID        byte
-	G               *gameState
-	AlreadyWon      bool
-	AlreadyWonDepth int
-	RoundNum        int
+type WinCondition struct {
+	Player1Count int
+	Player2Count int
 }
 
-func (e *GameEnv) Reset(field []byte) {
-	e.G = NewGame(field, e.PlayerID)
+type Connect4Game struct {
+	ToMove     Player
+	Heights    []int
+	WinConds   []WinCondition
+	TotalMoves int
 }
 
-type Move struct {
-	Col int
-	Val float64
-}
-
-func (e *GameEnv) NextMove(dlt time.Time) (Move, int) {
-	// If we know we've won, do a full search with a trivial window:
-	if e.AlreadyWon {
-		if e.PlayerID == '1' {
-			move, _ := minimax(e.G, e.AlreadyWonDepth, -Inf, -1e100, nil)
-			return move, e.AlreadyWonDepth
+func (g *Connect4Game) ResetGame(state string, toMove Player) {
+	g.ToMove = toMove
+	g.Heights = make([]int, 7)
+	g.WinConds = make([]WinCondition, 69)
+	g.TotalMoves = 0
+	for i := 0; i < 42; i++ {
+		var p Player
+		switch state[i*2] {
+		case '0':
+			continue
+		case '1':
+			p = Player1
+		case '2':
+			p = Player2
+		default:
+			panic("Bad field")
 		}
-		move, _ := minimax(e.G, e.AlreadyWonDepth, 1e100, Inf, nil)
-		return move, e.AlreadyWonDepth
+		g.delta(i, p, 1)
+	}
+}
+
+func (g *Connect4Game) delta(pos int, player Player, amt int) {
+	g.TotalMoves += amt
+	g.Heights[pos%7] += amt
+	for _, quad := range spaceToQuads[pos] {
+		switch player {
+		case Player1:
+			g.WinConds[quad].Player1Count += amt
+		case Player2:
+			g.WinConds[quad].Player2Count += amt
+		default:
+			panic("Bad Player")
+		}
+	}
+}
+
+func (g *Connect4Game) GuessScore() Score {
+	var p1score, p2score float64
+	for _, wc := range g.WinConds {
+		if wc.Player1Count > 0 && wc.Player2Count > 0 {
+			continue
+		}
+		if wc.Player1Count == 4 {
+			return Score{GameOver: true, Player1: math.Inf(1), Player2: 0}
+		}
+		if wc.Player2Count == 4 {
+			return Score{GameOver: true, Player1: 0, Player2: math.Inf(1)}
+		}
+		if wc.Player1Count > 0 {
+			p1score += math.Pow(10, float64(wc.Player1Count-1))
+		}
+		if wc.Player2Count > 0 {
+			p2score += math.Pow(10, float64(wc.Player2Count-1))
+		}
 	}
 
-	depth := 1
-	var bestMove Move
-	var t ApproximateTimer
-	t.Start(dlt)
-	for {
-		move, cancelled := minimax(e.G, depth, -Inf, Inf, &t)
-		if cancelled {
-			break
-		}
-
-		bestMove = move
-
-		if bestMove.Val == Inf || bestMove.Val == -Inf {
-			break
-		}
-
-		depth++
+	// Draw.
+	if g.TotalMoves == 42 {
+		return Score{GameOver: true}
 	}
-	log.Print("Reached depth: ", depth)
 
-	return bestMove, depth
+	return Score{GameOver: false, Player1: p1score, Player2: p2score}
+}
+
+func (g *Connect4Game) CurrentPlayer() Player {
+	return g.ToMove
+}
+
+type Connect4Move struct{ Column int }
+type Connect4Patch struct{ position int }
+
+func (g *Connect4Game) ValidMoves() []Move {
+	var res []Move
+	for i := 0; i < 7; i++ {
+		if g.Heights[i] < 6 {
+			res = append(res, Connect4Move{i})
+		}
+	}
+	return res
+}
+
+func (g *Connect4Game) Move(m Move) Patch {
+	col := m.(Connect4Move).Column
+	pos := col + 7*(5-g.Heights[col])
+	if pos < 0 {
+		panic("bad move")
+	}
+	g.delta(pos, g.ToMove, 1)
+	g.ToMove = opponent(g.ToMove)
+	return Connect4Patch{pos}
+}
+
+func (g *Connect4Game) Reverse(p Patch) {
+	pos := p.(Connect4Patch).position
+	g.ToMove = opponent(g.ToMove)
+	g.delta(pos, g.ToMove, -1)
+}
+
+func opponent(p Player) Player {
+	switch p {
+	case Player1:
+		return Player2
+	case Player2:
+		return Player1
+	default:
+		panic("Bad player")
+	}
 }
