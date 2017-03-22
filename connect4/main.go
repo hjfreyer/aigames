@@ -95,7 +95,7 @@ func NewConnect4Parser() MessageParser {
 func getDeadline(timeBank time.Duration, roundNum, maxRounds int) time.Duration {
 	bonusTime := timeBank - timePerMove
 	bonusTime /= time.Duration(maxRounds - roundNum)
-	if roundNum < 15 {
+	if roundNum < 20 {
 		bonusTime *= 3
 	}
 	res := timePerMove + bonusTime

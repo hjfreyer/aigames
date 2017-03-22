@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"time"
@@ -106,6 +107,7 @@ func (e *Searcher) NextMove(deadline time.Time) (Move, Score, error) {
 		if !score.IsWinForPlayer(Opponent(e.Player)) {
 			bestMove = move
 			bestScore = score
+			fmt.Println("Loss seems inevitable. Falling back to shorter lookaheads.")
 		}
 
 		if score.GameOver {
