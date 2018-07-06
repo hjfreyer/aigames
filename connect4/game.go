@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"math"
+	"strconv"
 )
 
 var spaceToQuads [][]int
@@ -59,14 +60,12 @@ type WinCondition struct {
 }
 
 type Connect4Game struct {
-	ToMove     Player
 	Heights    []int
 	WinConds   []WinCondition
 	TotalMoves int
 }
 
-func (g *Connect4Game) ResetGame(state string, toMove Player) {
-	g.ToMove = toMove
+func (g *Connect4Game) ResetGame(state string) {
 	g.Heights = make([]int, 7)
 	g.WinConds = make([]WinCondition, 69)
 	g.TotalMoves = 0
@@ -130,10 +129,19 @@ func (g *Connect4Game) GuessScore() Score {
 }
 
 func (g *Connect4Game) CurrentPlayer() Player {
-	return g.ToMove
+	if g.TotalMoves%2 == 0 {
+		return Player1
+	} else {
+		return Player2
+	}
 }
 
 type Connect4Move struct{ Column int }
+
+func (g Connect4Move) Encode() string {
+	return strconv.Itoa(g.Column)
+}
+
 type Connect4Patch struct{ position int }
 
 func (g *Connect4Game) ValidMoves() []Move {
@@ -152,13 +160,11 @@ func (g *Connect4Game) Move(m Move) Patch {
 	if pos < 0 {
 		panic("bad move")
 	}
-	g.delta(pos, g.ToMove, 1)
-	g.ToMove = Opponent(g.ToMove)
+	g.delta(pos, g.CurrentPlayer(), 1)
 	return Connect4Patch{pos}
 }
 
 func (g *Connect4Game) Reverse(p Patch) {
 	pos := p.(Connect4Patch).position
-	g.ToMove = Opponent(g.ToMove)
-	g.delta(pos, g.ToMove, -1)
+	g.delta(pos, Opponent(g.CurrentPlayer()), -1)
 }

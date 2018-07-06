@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"log"
 	"math"
 	"time"
 )
@@ -53,11 +52,16 @@ func (s Score) IsWinForPlayer(p Player) bool {
 	}
 }
 
-type Move interface{}
+type Move interface {
+	Encode() string
+}
 type Patch interface{}
+type Cancelable interface {
+	DeadlineExceeded() bool
+}
 
 type GameEngine interface {
-	ResetGame(state string, toMove Player)
+	ResetGame(state string)
 
 	GuessScore() Score
 	CurrentPlayer() Player
@@ -68,66 +72,74 @@ type GameEngine interface {
 }
 
 type Searcher struct {
-	G               GameEngine
-	Player          Player
-	AlreadyWon      bool
-	AlreadyWonDepth int
+	G     GameEngine
+	Round Round
+}
+
+type Round struct {
+	BestMove  Move
+	BestScore Score
+	BestDepth int
+
+	LastScore Score
+	LastDepth int
 }
 
 func (s *Searcher) Reset(state string) {
-	s.G.ResetGame(state, s.Player)
+	s.G.ResetGame(state)
+	s.Round = Round{}
+
+	// Start with the worst possible score.
+	s.Round.BestScore.GameOver = true
+	switch s.G.CurrentPlayer() {
+	case Player1:
+		s.Round.BestScore.Player2 = math.Inf(1)
+	case Player2:
+		s.Round.BestScore.Player1 = math.Inf(1)
+	default:
+		panic("bad player")
+	}
+	s.Round.LastScore = s.Round.BestScore
 }
 
-func (e *Searcher) NextMove(deadline time.Time) (Move, Score, error) {
-	// If we know we've won, do a full search with a trivial window:
-	if e.AlreadyWon {
-		if e.Player == Player1 {
-			return e.minimax(e.AlreadyWonDepth, math.Inf(-1), -1e100, nil)
-		}
-		return e.minimax(e.AlreadyWonDepth, 1e100, math.Inf(1), nil)
+func (e *Searcher) SearchToDepth(depth int, c Cancelable) error {
+	move, score, err := e.minimax(depth, math.Inf(-1), math.Inf(1), c)
+	if err != nil {
+		return err
 	}
+	e.Round.LastScore = score
+	e.Round.LastDepth = depth
+	if !score.IsWinForPlayer(Opponent(e.G.CurrentPlayer())) {
+		e.Round.BestMove = move
+		e.Round.BestScore = score
+		e.Round.BestDepth = depth
+	}
+	return nil
+}
 
+func (e *Searcher) NextMove(deadline time.Time) error {
 	depth := 1
-	var bestMove Move
-	var bestScore Score
 	var t ApproximateTimer
 	t.Start(deadline)
 	for {
-		move, score, err := e.minimax(depth, math.Inf(-1), math.Inf(1), &t)
-		if err == ErrDeadlineExceeded {
-			break
-		}
-		if err != nil {
-			return nil, Score{}, err
+		if err := e.SearchToDepth(depth, &t); err == ErrDeadlineExceeded {
+			return nil
+		} else if err != nil {
+			return err
 		}
 
-		// If the opponent won, fall back to the previous depth's best score in the
-		// hopes that they blunder.
-		if score.IsWinForPlayer(Opponent(e.Player)) {
-			log.Print("Loss seems inevitable. Falling back to shorter lookaheads.")
-		} else {
-			bestMove = move
-			bestScore = score
-		}
-
-		if score.GameOver {
+		if e.isWin(e.Round.LastScore) {
 			break
 		}
 
 		depth++
 	}
-	log.Print("Reached depth: ", depth)
 
-	if e.isWin(bestScore) {
-		e.AlreadyWon = true
-		e.AlreadyWonDepth = depth
-	}
-
-	return bestMove, bestScore, nil
+	return nil
 }
 
 func (s *Searcher) isWin(score Score) bool {
-	switch s.Player {
+	switch s.G.CurrentPlayer() {
 	case Player1:
 		return math.IsInf(score.Player1, 1)
 	case Player2:
@@ -137,8 +149,8 @@ func (s *Searcher) isWin(score Score) bool {
 	}
 }
 
-func (s *Searcher) minimax(depth int, alpha, beta float64, t *ApproximateTimer) (Move, Score, error) {
-	if t.DeadlineExceeded() {
+func (s *Searcher) minimax(depth int, alpha, beta float64, t Cancelable) (Move, Score, error) {
+	if t != nil && t.DeadlineExceeded() {
 		return nil, Score{}, ErrDeadlineExceeded
 	}
 

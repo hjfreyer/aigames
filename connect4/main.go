@@ -127,10 +127,8 @@ func main() {
 		case *SettingsChange:
 			if m.Attr == "your_botid" {
 				if m.Val == "1" {
-					searcher.Player = Player1
 					log.Print("Player: 1. -Inf is our goal.")
 				} else {
-					searcher.Player = Player2
 					log.Print("Player: 2. +Inf is our goal.")
 				}
 			}
@@ -147,12 +145,12 @@ func main() {
 			moveDuration := getDeadline(m.TimeBank, round, 43)
 			dl := time.Now().Add(moveDuration)
 			log.Printf("Time Bank: %v, allocating %v", m.TimeBank, moveDuration)
-			move, score, err := searcher.NextMove(dl)
+			err := searcher.NextMove(dl)
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Printf("Value: %v", score.Diff())
-			fmt.Printf("place_disc %d\n", move.(Connect4Move).Column)
+			log.Printf("Value: %v", searcher.Round.BestScore.Diff())
+			fmt.Printf("place_disc %d\n", searcher.Round.BestMove.(Connect4Move).Column)
 		}
 	}
 
